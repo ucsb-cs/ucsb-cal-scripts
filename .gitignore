@@ -1,7 +1,8 @@
 # App specific
 
 UCSB_API_CONSUMER_KEY
-
+token.json
+credentials.json
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -210,3 +211,4 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+.DS_Store

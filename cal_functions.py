@@ -5,6 +5,10 @@ import re
 import requests
 from pprint import pprint
 
+import datetime
+
+import google_cal_functions
+
 def read_file(filename):
     """Read the contents of a file and return it as a string."""
     try:
@@ -83,9 +87,40 @@ def get_quarter(yyyyq, UCSB_API_CONSUMER_KEY):
     return data
 
     
+def get_quarter_start_dates(quarter):
+     # Is the first day of classses on a Thursday or a Monday?
+     first_day_of_classes = quarter['firstDayOfClasses']
+     first_day_of_classes_datetime = datetime.datetime.fromisoformat(first_day_of_classes)
+     first_day_of_quarter = quarter['firstDayOfQuarter']
+     first_day_of_quarter_datetime = datetime.datetime.fromisoformat(first_day_of_quarter)
+     
     
+
+     first_day_of_classes_weekday = first_day_of_classes_datetime.weekday()
+     if first_day_of_classes_weekday not in [0, 3]:
+         raise ValueError(f"First day of classes {first_day_of_classes} is not on a Monday or Thursday.")
+     if first_day_of_classes_weekday == 3:
+         num_weeks = 11
+         start_week = 0
+     else:
+         num_weeks = 10
+         start_week = 1  
+
+     start_first_week = first_day_of_quarter_datetime
+     # If the first day of the quarter is not a Sunday, adjust to the previous Sunday
+     if start_first_week.weekday() != 6:
+        start_first_week -= datetime.timedelta(days=start_first_week.weekday() + 1)
+     
+     return {
+         "start_week": start_week,
+         "num_weeks": num_weeks,
+         "start_first_week_date": start_first_week.timestamp(),
+         "first_day_of_classes": first_day_of_classes_datetime.timestamp()
+     }
+          
+
     
-    
+   
 if __name__=="__main__":
     
     UCSB_API_CONSUMER_KEY = read_file("UCSB_API_CONSUMER_KEY")
@@ -107,6 +142,59 @@ if __name__=="__main__":
             done = is_in_qxx_format(qxx)
 
     yyyyyq = qxx_to_yyyyq(qxx)
-    quarter = get_quarter(yyyyyq, UCSB_API_CONSUMER_KEY)
+    quarter = get_quarter(yyyyyq, UCSB_API_CONSUMER_KEY)[0]
     print(f"Quarter data for {yyyyyq}: ")
     pprint(quarter)
+    
+
+    start_dates = get_quarter_start_dates(quarter)
+
+    service = google_cal_functions.get_calendar_service()
+
+    first_week = start_dates['start_week']
+    last_week = first_week + start_dates['num_weeks'] - 1
+    week_start_date = datetime.datetime.fromtimestamp(start_dates['start_first_week_date'])
+    for week in range(first_week, last_week + 1):
+      
+        week_end_date = week_start_date + datetime.timedelta(days=6)
+        print(f"Week {week} start date: {week_start_date}")
+        week_event = google_cal_functions.create_multi_day_event(
+            f"{qxx} Week {week}",
+            week_start_date.date(),
+            week_end_date.date()
+        )
+        google_cal_functions.add_event(service, "primary", week_event)
+        # Move to the next week 
+        week_start_date += datetime.timedelta(weeks=1)
+
+    # Create events for important dates
+    important_dates = [
+        (f'{qxx} Fee Deadline', quarter['feeDeadline']),
+        (f'{qxx} First Day of Classes', quarter['firstDayOfClasses']),
+        (f'{qxx} First Day of Finals', quarter['firstDayOfFinals']),
+        (f'{qxx} Last Day of Classes', quarter['lastDayOfClasses']),
+        (f'{qxx} Last Day of Finals', quarter['lastDayOfFinals']),
+        (f'{qxx} Last Day of Schedule', quarter['lastDayOfSchedule']),
+        (f'{qxx} Last Day to Add Undergrad', quarter['lastDayToAddUnderGrad']),
+        (f'{qxx} Last Day to Add Grad', quarter['lastDayToAddGrad']),
+        (f'{qxx} Pass 1 Begin', quarter['pass1Begin']),
+        (f'{qxx} Pass 2 Begin', quarter['pass2Begin']),
+        (f'{qxx} Pass 3 Begin', quarter['pass3Begin']),
+        (f'{qxx} First Day of Quarter', quarter['firstDayOfQuarter']),
+    ]
+
+    for event_name, event_date in important_dates:
+        if event_date is None:
+            print(f"Skipping event {event_name} as the date is None.")
+            continue
+        print(f"Creating event: {event_name} on {event_date}")
+        event = google_cal_functions.create_all_day_event(
+            event_name,
+            datetime.datetime.fromisoformat(event_date).date()
+        )
+        google_cal_functions.add_event(service, "primary", event)
+
+
+
+
+   
