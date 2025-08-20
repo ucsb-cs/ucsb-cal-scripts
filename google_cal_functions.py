@@ -12,25 +12,70 @@ SCOPES = ["https://www.googleapis.com/auth/calendar.readonly",
           "https://www.googleapis.com/auth/calendar"]
 
 
-
+import datetime
 
 def add_event(service, calendar_id, event):
-    """Add an event to the calendar if it doesn't already exist."""
+    """
+    Adds an event to a calendar after checking for duplicates.
+
+    Args:
+        service: The Google Calendar API service object.
+        calendar_id: The ID of the calendar.
+        event: The event dictionary to be added.
+
+    Returns:
+        The created event object if no duplicate exists, otherwise None.
+    """
     try:
-        # Check for existing events
-        events = service.events().list(calendarId=calendar_id).execute()
-        for existing_event in events.get("items", []):
-            if existing_event.get("summary") == event["summary"]:
-                print(f"Event already exists: {existing_event.get('htmlLink')}")
-                return None
+        # Extract the start and end times from the event dictionary
+        if 'date' in event.get('start', {}):  # All-day event
+            start_time = datetime.datetime.strptime(event['start']['date'], '%Y-%m-%d').date()
+            end_time = datetime.datetime.strptime(event['end']['date'], '%Y-%m-%d').date()
+            time_min = datetime.datetime.combine(start_time, datetime.time.min).isoformat() + 'Z'
+            time_max = datetime.datetime.combine(end_time, datetime.time.max).isoformat() + 'Z'
+        else:  # Regular or multi-day event
+            start_time_str = event['start']['dateTime']
+            end_time_str = event['end']['dateTime']
+            time_min = start_time_str
+            time_max = end_time_str
 
-        # If not found, create the event
+        # Search for existing events with the same summary and time range
+        events_result = service.events().list(
+            calendarId=calendar_id,
+            timeMin=time_min,
+            timeMax=time_max,
+            q=event['summary'],
+            singleEvents=True,
+            orderBy='startTime'
+        ).execute()
+
+        events = events_result.get('items', [])
+
+        # Check for duplicates based on summary and start time
+        for existing_event in events:
+            # Check for both regular and all-day events
+            if 'date' in existing_event.get('start', {}):
+                existing_start_date = existing_event['start']['date']
+                event_start_date = event['start'].get('date')
+                if existing_event['summary'] == event['summary'] and existing_start_date == event_start_date:
+                    print(f"Duplicate event found: '{existing_event['summary']}' starting on {existing_start_date}. Returning None.")
+                    return None
+            else:
+                existing_start_time = existing_event['start']['dateTime']
+                event_start_time = event['start']['dateTime']
+                if existing_event['summary'] == event['summary'] and existing_start_time == event_start_time:
+                    print(f"Duplicate event found: '{existing_event['summary']}' starting at {existing_start_time}. Returning None.")
+                    return None
+        
+        # No duplicate found, so create the event
         created_event = service.events().insert(calendarId=calendar_id, body=event).execute()
-    except HttpError as error:
-        print(f"An error occurred: {error}")
-        return None
-    return created_event
+        print(f"Event created: '{created_event.get('summary')}'")
+        return created_event
 
+    except Exception as error:
+        print(f'An error occurred: {error}')
+        return None
+    
 
 def create_event(summary, start_time, end_time):
     """Create an event dictionary."""

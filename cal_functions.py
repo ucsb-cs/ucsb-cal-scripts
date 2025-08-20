@@ -192,7 +192,11 @@ if __name__=="__main__":
             event_name,
             datetime.datetime.fromisoformat(event_date).date()
         )
-        google_cal_functions.add_event(service, "primary", event)
+        result = google_cal_functions.add_event(service, "primary", event)
+        if result:
+            print(f"Event created: {result.get('htmlLink')}")
+        else:
+            print(f"Failed to create event: {event_name}")
 
 
 
